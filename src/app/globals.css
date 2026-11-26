@@ -1,26 +1,191 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --void-obsidian: #060605;
+  --charcoal-slate: #11100f;
+  --concrete-surface: #181614;
+  --industrial-edge: #2c2824;
+  --bone-paper: #f4efe4;
+  --newsprint: #f3eee3;
+  --muted-ash: #b0a99d;
+  --insignia: #c83e2e;
+  --insignia-bright: #e04d3c;
+  --skip-plum: #7d6199;
+  --pipeline-blue: #6e7f8d;
+  --pipeline-peach: #c48e78;
+  --posture-sand: #d8cfc0;
+  --brass: #cbb06a;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-void: var(--void-obsidian);
+  --color-charcoal: var(--charcoal-slate);
+  --color-concrete: var(--concrete-surface);
+  --color-bone: var(--bone-paper);
+  --color-newsprint: var(--newsprint);
+  --color-ash: var(--muted-ash);
+  --color-insignia: var(--insignia);
+  --font-display: var(--font-display), system-ui, sans-serif;
+  --font-heavy: var(--font-display), system-ui, sans-serif;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-serif: var(--font-instrument), Georgia, serif;
+  --font-mono: var(--font-ibm-mono), ui-monospace, monospace;
+  --font-devanagari: var(--font-noto-devanagari), sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--void-obsidian);
+  color: var(--bone-paper);
+  scroll-behavior: auto;
+  overflow-x: clip;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background-color: var(--void-obsidian);
+  color: var(--bone-paper);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  line-height: 1.62;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--insignia);
+  color: var(--bone-paper);
+}
+
+/* Custom pointer gating: hide OS cursor only on fine-pointer desktops when cursor shell is mounted */
+@media (hover: hover) and (pointer: fine) {
+  body.has-custom-cursor,
+  body.has-custom-cursor a,
+  body.has-custom-cursor button,
+  body.has-custom-cursor [role="button"] {
+    cursor: none !important;
+  }
+}
+
+/* Subtle analog film grain overlay */
+.film-grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  pointer-events: none;
+  opacity: 0.036;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.88' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Refined ultra-subtle studio grid lines */
+.architectural-grid {
+  background-image:
+    linear-gradient(to right, rgba(244, 239, 228, 0.026) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 239, 228, 0.026) 1px, transparent 1px);
+  background-size: 120px 120px;
+}
+
+/* Dramatic studio chiaroscuro backlight pool */
+.studio-spotlight-bg {
+  background-image:
+    radial-gradient(ellipse 68% 58% at 50% 44%, rgba(200, 62, 46, 0.14) 0%, rgba(244, 239, 228, 0.05) 38%, rgba(6, 6, 5, 0) 75%),
+    linear-gradient(to right, rgba(244, 239, 228, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 239, 228, 0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 120px 120px, 120px 120px;
+}
+
+.raw-paper-surface {
+  background-color: var(--newsprint);
+  color: #141311;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(20, 19, 17, 0.014) 3px,
+      rgba(20, 19, 17, 0.014) 4px
+    ),
+    linear-gradient(180deg, #f5f0e6 0%, #ede6d7 100%);
+}
+
+/* Multilingual LED marquee */
+@keyframes psyphi-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.led-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: psyphi-marquee 42s linear infinite;
+}
+
+.led-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Focus rings for accessible keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--insignia-bright);
+  outline-offset: 3px;
+}
+
+/* Responsive tactile press utility */
+.tactile-btn {
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 200ms var(--ease-out),
+    border-color 200ms var(--ease-out),
+    color 200ms var(--ease-out);
+}
+
+.tactile-btn:active {
+  transform: scale(0.97);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--void-obsidian);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #332f2a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--insignia);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .led-marquee-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .film-grain-overlay {
+    opacity: 0.02;
+  }
 }
