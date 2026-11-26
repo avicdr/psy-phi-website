@@ -1,9 +1,36 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { AnimatePresence, motion } from "motion/react";
 
-const INTRO_SEEN_KEY = "psyphi_exhibition_intro_seen_v1";
+const INTRO_SEEN_KEY = "psyphi_exhibition_intro_seen_v2";
+const INTRO_AUTO_SKIP_KEY = "psyphi_exhibition_autoskip_v2";
+
+function subscribeNoop() {
+  return () => {};
+}
+
+function getReturningSnapshot(): boolean {
+  try {
+    return Boolean(window.localStorage.getItem(INTRO_SEEN_KEY));
+  } catch {
+    return false;
+  }
+}
+
+function getAutoSkipSnapshot(): boolean {
+  try {
+    return window.localStorage.getItem(INTRO_AUTO_SKIP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface OpeningSequenceProps {
   forceOpen?: boolean;
@@ -14,78 +41,102 @@ export function OpeningSequence({
   forceOpen = false,
   onComplete,
 }: OpeningSequenceProps) {
-  const [visible, setVisible] = useState(false);
+  const isReturning = useSyncExternalStore(
+    subscribeNoop,
+    getReturningSnapshot,
+    () => false
+  );
+  const autoSkipOptIn = useSyncExternalStore(
+    subscribeNoop,
+    getAutoSkipSnapshot,
+    () => false
+  );
+
+  const [visible, setVisible] = useState(() => !autoSkipOptIn || forceOpen);
   const [stage, setStage] = useState<0 | 1 | 2>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerRef = useRef({ x: 0.5, y: 0.5 });
+  const onCompleteRef = useRef(onComplete);
 
-  const dismiss = useCallback(() => {
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const markSeen = useCallback(() => {
     try {
       window.localStorage.setItem(INTRO_SEEN_KEY, "1");
     } catch {
       // Ignore storage errors
     }
+  }, []);
+
+  const dismiss = useCallback(() => {
+    markSeen();
     setVisible(false);
-    onComplete?.();
-  }, [onComplete]);
+    onCompleteRef.current?.();
+  }, [markSeen]);
 
+  const handleRememberAutoSkip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      window.localStorage.setItem(INTRO_AUTO_SKIP_KEY, "1");
+    } catch {
+      // Ignore storage errors
+    }
+    dismiss();
+  };
+
+  // Start 3-beat opening film sequence once document is interactive/loaded so chunks/fonts don't consume the film time
   useEffect(() => {
-    const timers: number[] = [];
+    if (!visible) return;
 
-    const startId = window.setTimeout(() => {
-      const reduced = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
+    let started = false;
+    let t1 = 0;
+    let t2 = 0;
+    let tEnd = 0;
+    let fallbackId = 0;
 
-      if (reduced && !forceOpen) {
-        onComplete?.();
-        return;
-      }
+    const beginSequence = () => {
+      if (started) return;
+      started = true;
+      t1 = window.setTimeout(() => setStage(1), 950);
+      t2 = window.setTimeout(() => setStage(2), 1950);
+      tEnd = window.setTimeout(() => {
+        markSeen();
+        setVisible(false);
+        onCompleteRef.current?.();
+      }, 3250);
+    };
 
-      const seenBefore = (() => {
-        try {
-          return Boolean(window.localStorage.getItem(INTRO_SEEN_KEY));
-        } catch {
-          return false;
-        }
-      })();
-
-      if (seenBefore && !forceOpen) {
-        onComplete?.();
-        return;
-      }
-
-      setVisible(true);
-      setStage(0);
-
-      timers.push(window.setTimeout(() => setStage(1), 650));
-      timers.push(window.setTimeout(() => setStage(2), 1450));
-      timers.push(
-        window.setTimeout(() => {
-          try {
-            window.localStorage.setItem(INTRO_SEEN_KEY, "1");
-          } catch {
-            // Ignore storage errors
-          }
-          setVisible(false);
-          onComplete?.();
-        }, 2250)
-      );
-    }, 0);
+    if (document.readyState === "complete") {
+      beginSequence();
+    } else {
+      window.addEventListener("load", beginSequence, { once: true });
+      // Generous dead-man fallback so heavy assets on slow networks don't cut off before load completes,
+      // while click/ESC skip works immediately at any time from frame 0.
+      fallbackId = window.setTimeout(beginSequence, 4500);
+    }
 
     return () => {
-      window.clearTimeout(startId);
-      timers.forEach((t) => window.clearTimeout(t));
+      window.removeEventListener("load", beginSequence);
+      window.clearTimeout(fallbackId);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(tEnd);
     };
-  }, [forceOpen, onComplete]);
+  }, [visible, markSeen]);
 
-  // Optical slit-scan wave field behind the ΨØ opening
+  // Optical radial aperture canvas behind the ΨØ opening emblem
   useEffect(() => {
     if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
 
     let rafId = 0;
     let time = 0;
@@ -100,36 +151,64 @@ export function OpeningSequence({
     window.addEventListener("resize", resize);
 
     const draw = () => {
-      time += 0.025;
+      if (!reduced) time += 0.024;
       const w = window.innerWidth;
       const h = window.innerHeight;
-      ctx.fillStyle = "#070605";
+      ctx.fillStyle = "#060605";
       ctx.fillRect(0, 0, w, h);
 
       const px = pointerRef.current.x * w;
       const py = pointerRef.current.y * h;
 
-      // Sculptural optical field rings & grid scanlines
-      const grad = ctx.createRadialGradient(px, py, 24, px, py, Math.max(w, h) * 0.55);
-      grad.addColorStop(0, stage === 0 ? "rgba(178,58,46,0.22)" : "rgba(237,231,217,0.14)");
-      grad.addColorStop(0.45, "rgba(178,58,46,0.06)");
-      grad.addColorStop(1, "rgba(7,6,5,0)");
-      ctx.fillStyle = grad;
+      const beam = ctx.createRadialGradient(
+        px,
+        py,
+        32,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.65
+      );
+      beam.addColorStop(
+        0,
+        stage === 0
+          ? "rgba(200, 62, 46, 0.28)"
+          : stage === 1
+            ? "rgba(244, 239, 228, 0.20)"
+            : "rgba(244, 239, 228, 0.26)"
+      );
+      beam.addColorStop(0.42, "rgba(200, 62, 46, 0.08)");
+      beam.addColorStop(1, "rgba(6, 6, 5, 0)");
+      ctx.fillStyle = beam;
       ctx.fillRect(0, 0, w, h);
 
-      ctx.strokeStyle = "rgba(237,231,217,0.06)";
       ctx.lineWidth = 1;
-      for (let i = 0; i < 16; i++) {
-        const radius = 65 + i * 38 + Math.sin(time + i * 0.4) * 6;
+      for (let i = 0; i < 18; i++) {
+        const radius =
+          64 + i * 38 + (reduced ? 0 : Math.sin(time + i * 0.35) * 8);
+        const alpha = Math.max(0.03, 0.12 - i * 0.0045);
+        ctx.strokeStyle =
+          i % 4 === 0
+            ? `rgba(200, 62, 46, ${alpha * 1.35})`
+            : `rgba(244, 239, 228, ${alpha})`;
         ctx.beginPath();
-        ctx.ellipse(w * 0.5 + (px - w * 0.5) * 0.04, h * 0.5 + (py - h * 0.5) * 0.04, radius * 1.15, radius * 0.62, Math.sin(time * 0.3) * 0.06, 0, Math.PI * 2);
+        ctx.ellipse(
+          w * 0.5 + (px - w * 0.5) * 0.05,
+          h * 0.5 + (py - h * 0.5) * 0.05,
+          radius * 1.18,
+          radius * 0.58,
+          reduced ? 0 : Math.sin(time * 0.32) * 0.07,
+          0,
+          Math.PI * 2
+        );
         ctx.stroke();
       }
 
-      rafId = window.requestAnimationFrame(draw);
+      if (!reduced) {
+        rafId = window.requestAnimationFrame(draw);
+      }
     };
 
-    rafId = window.requestAnimationFrame(draw);
+    draw();
     return () => {
       window.cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
@@ -140,6 +219,7 @@ export function OpeningSequence({
     if (!visible) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
         dismiss();
       }
     };
@@ -151,9 +231,11 @@ export function OpeningSequence({
     <AnimatePresence>
       {visible && (
         <motion.div
+          id="psyphi-opening-film"
           role="dialog"
           aria-modal="true"
-          aria-label="PSY PHI Exhibition Opening Sequence"
+          aria-label="PSY PHI Exhibition Opening Film"
+          onClick={dismiss}
           onPointerMove={(e) => {
             pointerRef.current = {
               x: e.clientX / Math.max(1, window.innerWidth),
@@ -163,10 +245,10 @@ export function OpeningSequence({
           initial={{ clipPath: "inset(0% 0% 0% 0%)", opacity: 1 }}
           exit={{
             clipPath: "inset(0% 0% 100% 0%)",
-            opacity: 0.98,
-            transition: { duration: 0.78, ease: [0.77, 0, 0.175, 1] },
+            opacity: 0.99,
+            transition: { duration: 0.85, ease: [0.77, 0, 0.175, 1] },
           }}
-          className="fixed inset-0 z-[90] flex flex-col justify-between bg-[#070605] p-6 text-[#EDE7D9] sm:p-10"
+          className="fixed inset-0 z-[90] flex cursor-pointer flex-col justify-between bg-[#060605] p-6 text-[#F4EFE4] sm:p-10"
         >
           <canvas
             ref={canvasRef}
@@ -174,86 +256,115 @@ export function OpeningSequence({
             className="pointer-events-none absolute inset-0 h-full w-full"
           />
 
-          <div className="relative z-10 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.22em] text-[#948E82]">
-            <span>PSY PHI {"//"} DROP 01</span>
-            <button
-              type="button"
-              onClick={dismiss}
-              data-cursor="explore"
-              className="border border-[#EDE7D9]/25 bg-[#131210]/80 px-3 py-1.5 text-[10px] tracking-[0.2em] text-[#EDE7D9] transition-colors hover:border-[#B23A2E] hover:bg-[#B23A2E] focus-visible:outline-2"
-            >
-              {forceOpen ? "CLOSE FILM" : "SKIP SEQUENCE"} [ESC]
-            </button>
+          {/* Top exhibition film bar */}
+          <div className="relative z-10 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.24em] text-[#B0A99D]">
+            <span>PSY PHI {"//"} OPENING EXHIBITION</span>
+            <div className="flex items-center gap-3">
+              {isReturning && !forceOpen && (
+                <button
+                  type="button"
+                  onClick={handleRememberAutoSkip}
+                  className="hidden text-[9px] tracking-[0.18em] text-[#B0A99D] underline-offset-4 hover:text-[#F4EFE4] hover:underline sm:inline-block"
+                >
+                  Always Skip
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismiss();
+                }}
+                data-cursor="explore"
+                className="border border-white/20 bg-[#11100f]/85 px-3.5 py-1.5 text-[10px] tracking-[0.2em] text-[#F4EFE4] transition-colors hover:border-[#C83E2E] hover:bg-[#C83E2E] focus-visible:outline-2"
+              >
+                {forceOpen
+                  ? "CLOSE FILM"
+                  : isReturning
+                    ? "SKIP [ESC] / CLICK"
+                    : "SKIP FILM [ESC]"}
+              </button>
+            </div>
           </div>
 
+          {/* Center Typographic ΨØ Transformation */}
           <div className="relative z-10 flex flex-col items-center justify-center text-center">
             <div className="relative flex items-center justify-center">
               <motion.span
                 aria-hidden="true"
                 initial={{ scaleX: 0, opacity: 0 }}
                 animate={{ scaleX: 1, opacity: 0.4 }}
-                transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
-                className="pointer-events-none absolute h-px w-[280px] bg-[#EDE7D9]/45 sm:w-[440px]"
+                transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
+                className="pointer-events-none absolute h-px w-[280px] bg-white/35 sm:w-[480px]"
               />
               <motion.span
                 aria-hidden="true"
                 initial={{ scaleY: 0, opacity: 0 }}
                 animate={{ scaleY: 1, opacity: 0.4 }}
-                transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
-                className="pointer-events-none absolute h-[140px] w-px bg-[#EDE7D9]/45"
+                transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
+                className="pointer-events-none absolute h-[140px] w-px bg-white/35 sm:h-[180px]"
               />
 
-              <div className="relative flex items-baseline gap-2 sm:gap-4">
+              <motion.div
+                animate={{
+                  letterSpacing:
+                    stage === 0 ? "0.18em" : stage === 1 ? "0.02em" : "-0.03em",
+                  scale: stage === 2 ? 1.06 : 1,
+                }}
+                transition={{ duration: 0.85, ease: [0.23, 1, 0.32, 1] }}
+                className="relative flex items-baseline gap-2 sm:gap-5"
+              >
                 <motion.span
-                  initial={{ x: -34, opacity: 0, filter: "blur(6px)" }}
+                  initial={{ x: -38, opacity: 0, filter: "blur(10px)" }}
                   animate={{
-                    x: stage >= 1 ? 0 : -10,
+                    x: stage >= 1 ? 0 : -12,
                     opacity: 1,
                     filter: "blur(0px)",
                   }}
-                  transition={{ duration: 0.65, ease: [0.23, 1, 0.32, 1] }}
-                  className="font-display text-7xl font-extrabold tracking-tight text-[#EDE7D9] sm:text-9xl"
+                  transition={{ duration: 0.75, ease: [0.23, 1, 0.32, 1] }}
+                  className="font-display text-7xl font-bold text-[#F4EFE4] sm:text-9xl"
                 >
                   Ψ
                 </motion.span>
                 <motion.span
-                  initial={{ x: 34, opacity: 0, filter: "blur(6px)" }}
+                  initial={{ x: 38, opacity: 0, filter: "blur(10px)" }}
                   animate={{
-                    x: stage >= 1 ? 0 : 10,
+                    x: stage >= 1 ? 0 : 12,
                     opacity: 1,
                     filter: "blur(0px)",
                   }}
-                  transition={{ duration: 0.65, ease: [0.23, 1, 0.32, 1] }}
-                  className="font-display text-7xl font-extrabold tracking-tight text-[#B23A2E] sm:text-9xl"
+                  transition={{ duration: 0.75, ease: [0.23, 1, 0.32, 1] }}
+                  className="font-display text-7xl font-bold text-[#C83E2E] sm:text-9xl"
                 >
                   Ø
                 </motion.span>
-              </div>
+              </motion.div>
             </div>
 
-            <div className="mt-6 h-8 overflow-hidden">
+            <div className="mt-7 h-10 overflow-hidden">
               <motion.div
                 animate={{
-                  y: stage === 0 ? 0 : stage === 1 ? -32 : -64,
+                  y: stage === 0 ? 0 : stage === 1 ? -40 : -80,
                 }}
-                transition={{ duration: 0.52, ease: [0.77, 0, 0.175, 1] }}
-                className="flex flex-col items-center font-mono text-xs uppercase tracking-[0.28em]"
+                transition={{ duration: 0.62, ease: [0.77, 0, 0.175, 1] }}
+                className="flex flex-col items-center"
               >
-                <span className="flex h-8 items-center text-[#948E82]">
+                <span className="flex h-10 items-center font-mono text-xs uppercase tracking-[0.28em] text-[#B0A99D]">
                   PSI · MIND &nbsp;/&nbsp; PHI · INQUIRY
                 </span>
-                <span className="flex h-8 items-center text-[#EDE7D9]">
-                  CLOTHES GET READ BEFORE YOU SPEAK
+                <span className="flex h-10 items-center font-serif text-2xl italic tracking-tight text-[#F4EFE4] sm:text-3xl">
+                  Clothes get read before you speak.
                 </span>
-                <span className="flex h-8 items-center text-[#B23A2E]">
+                <span className="flex h-10 items-center font-display text-sm font-semibold uppercase tracking-[0.26em] text-[#C83E2E]">
                   NOTHING IS FIXED — DROP THE CLASS
                 </span>
               </motion.div>
             </div>
           </div>
 
-          <div className="relative z-10 flex items-center justify-between border-t border-[#EDE7D9]/12 pt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-[#948E82]">
-            <span>MUMBAI {"//"} ARCHIVE ROOM 00</span>
+          {/* Bottom architectural coordinates */}
+          <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-4 font-mono text-[10px] uppercase tracking-[0.22em] text-[#B0A99D]">
+            <span>MUMBAI {"//"} EXHIBITION ROOM 00</span>
             <span>साई फाई — NOTICE EVERYTHING</span>
           </div>
         </motion.div>

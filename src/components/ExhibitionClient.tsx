@@ -87,6 +87,10 @@ export function ExhibitionClient() {
     setIntroReplayKey((k) => k + 1);
   }, []);
 
+  const handleIntroComplete = useCallback(() => {
+    setForceIntro(false);
+  }, []);
+
   return (
     <>
       {/* Subtle analog film grain across dark surfaces */}
@@ -105,7 +109,7 @@ export function ExhibitionClient() {
       <OpeningSequence
         key={introReplayKey}
         forceOpen={forceIntro}
-        onComplete={() => setForceIntro(false)}
+        onComplete={handleIntroComplete}
       />
 
       <Navigation
